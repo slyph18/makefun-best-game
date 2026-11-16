@@ -1,711 +1,451 @@
 import * as THREE from 'three';
 import { PALETTE } from './palette.js';
 
-const HEALTH = 100;
-const SPEED = 2.25;
-const ARRIVE_DISTANCE = 0.24;
-const BOT_EYE = 1.45;
-const SHOT_RANGE = 38;
-const DETECT_TIME = 0.32;
-const LOS_INTERVAL = 0.1;
-const FIRE_GAP = 0.9;
-const BURST_GAP = 0.19;
-const MUZZLE_TIME = 0.06;
-const FALL_TIME = 0.68;
-const HOLD_MIN = 0.5;
-const HOLD_EXTRA = 0.7;
-const COVER_DELAY = 0.62;
-const COVER_STANDOFF = 1.15;
-const PEEK_STANDOFF = 0.2;
-const COVER_MARGIN = 0.22;
-const DUCK_SCALE = 0.58;
-const SEPARATION_RADIUS = 2.3;
-const SQUAD_TARGET_RADIUS = 3.1;
-const SQUAD_COVER_RADIUS = 1.7;
-const COVER_TRAVEL_COST = 0.048;
-const COVER_ALIGNMENT_COST = 1.05;
-const COVER_EXPOSURE_COST = 2.35;
-const COVER_CROWD_COST = 2.7;
-const COVER_LANE_COST = 0.55;
-const HEAD_DAMAGE = 100;
-const BODY_DAMAGE = 34;
-const SHOT_DAMAGE = 17;
-const PLAYER_RADIUS = 0.42;
-const ACCURACY_TIME = 2.2;
-const PUSH_STANDOFF = 0.5;
+const BOT_COUNT = 4;
+const MAX_HEALTH = 100;
+const COVER_MOVE_SPEED = 3.1;
+const PUSH_MOVE_SPEED = 3.8;
+const ROUTE_MOVE_SPEED = 2.8;
+const ARRIVAL_DISTANCE = 0.45;
+const STUCK_DISTANCE = 0.12;
 
-const SPAWNS = [
-  [-8.8, -9.6],
-  [-2.6, -10.2],
-  [2.6, -10.2],
-  [8.8, -9.6],
-];
-
-const LANES = ['outer-left', 'inner-left', 'inner-right', 'outer-right'];
-
-const TIER_NAMES = ['rifleman', 'line trooper', 'marksman', 'vanguard'];
-const REACTION_TIERS = [0.28, 0.24, 0.19, 0.14];
-const ACCURACY_TIERS = [0.035, 0.029, 0.022, 0.016];
-const FIRE_TIERS = [1.08, 0.94, 0.78, 0.68];
-const AGGRESSION_TIERS = [0.2, 0.32, 0.48, 0.62];
-
-const PUSH_POINTS = [
-  [-9.2, -5.6],
-  [-6.8, -8.2],
-  [-5.4, -6.0],
-  [-8.6, -3.4],
+const TIER_SETTINGS = [
+  {
+    reaction: 0.55,
+    accuracy: 0.45,
+    fireDelay: 0.55,
+    burst: 2,
+    aggression: 0.25,
+    damage: 7,
+    color: PALETTE.uniformDark,
+  },
+  {
+    reaction: 0.42,
+    accuracy: 0.56,
+    fireDelay: 0.44,
+    burst: 3,
+    aggression: 0.42,
+    damage: 8,
+    color: PALETTE.uniformLight,
+  },
+  {
+    reaction: 0.31,
+    accuracy: 0.68,
+    fireDelay: 0.34,
+    burst: 3,
+    aggression: 0.62,
+    damage: 9,
+    color: PALETTE.oliveLight,
+  },
+  {
+    reaction: 0.22,
+    accuracy: 0.79,
+    fireDelay: 0.24,
+    burst: 4,
+    aggression: 0.8,
+    damage: 10,
+    color: PALETTE.accent,
+  },
 ];
 
 const ROUTES = [
-  [
-    [-9.2, -9.4], [-7.0, -6.2], [-7.4, 0.0], [-6.6, 3.8],
-    [0.0, 4.4], [6.0, 2.2], [9.0, 0.0], [7.8, -3.2],
-    [0.0, -1.6], [-3.0, 0.0], [-7.0, 3.0], [-9.2, -9.4],
-  ],
-  [
-    [-6.0, -9.4], [-4.0, -5.8], [-3.6, 0.0], [-5.5, 3.4],
-    [-1.5, 6.0], [2.0, 6.4], [6.5, 4.0], [7.0, -1.2],
-    [3.0, -1.8], [0.0, 0.0], [-3.0, -2.4], [-6.0, -9.4],
-  ],
-  [
-    [6.0, -9.4], [8.6, -5.4], [7.4, 0.0], [5.5, 3.4],
-    [1.5, 6.0], [-2.0, 6.4], [-6.5, 4.0], [-7.0, -1.2],
-    [-3.0, -1.8], [0.0, 0.0], [3.0, -2.4], [6.0, -9.4],
-  ],
-  [
-    [9.2, -9.4], [7.0, -6.2], [7.4, 0.0], [6.6, 3.8],
-    [0.0, 4.4], [-6.0, 2.2], [-9.0, 0.0], [-7.8, -3.2],
-    [0.0, -1.6], [3.0, 0.0], [7.0, 3.0], [9.2, -9.4],
-  ],
+  [[-9.4, 5.2], [-3.6, -1.4], [-6.5, -6.4]],
+  [[-13.2, 7.1], [-6.7, 3.1], [-8.2, -4.2]],
+  [[4.7, 6.4], [1.5, 1.4], [-4.7, -5.6]],
+  [[12.4, 4.6], [4.8, 2.8], [-2.4, -4.4]],
 ];
 
-export function createBots(scene, random) {
-  const bodyMaterial = new THREE.MeshStandardMaterial({
-    color: new THREE.Color(PALETTE.uniformDark),
-    roughness: 0.68,
-    metalness: 0.04,
-  });
-  const headMaterial = new THREE.MeshStandardMaterial({
-    color: new THREE.Color('#d7bd92'),
-    roughness: 0.52,
-    metalness: 0.03,
-    emissive: new THREE.Color('#f6d8a4'),
-    emissiveIntensity: 0.24,
-  });
-  const limbMaterial = new THREE.MeshStandardMaterial({
-    color: new THREE.Color(PALETTE.uniformLight),
-    roughness: 0.82,
-    metalness: 0.02,
-  });
-  const stripeMaterial = new THREE.MeshStandardMaterial({
-    color: new THREE.Color('#ff933f'),
-    emissive: new THREE.Color('#873400'),
-    emissiveIntensity: 0.24,
-    roughness: 0.46,
-    metalness: 0.02,
-  });
-  const helmetMaterial = new THREE.MeshStandardMaterial({
-    color: new THREE.Color('#1e242a'),
-    roughness: 0.58,
-    metalness: 0.14,
-  });
-  const backpackMaterial = new THREE.MeshStandardMaterial({
-    color: new THREE.Color(PALETTE.ink),
-    roughness: 0.74,
-    metalness: 0.05,
-  });
-  const gunMaterial = new THREE.MeshStandardMaterial({
-    color: new THREE.Color('#333a40'),
-    roughness: 0.42,
-    metalness: 0.44,
-  });
+const raycaster = new THREE.Raycaster();
+raycaster.far = 74;
+const threatPosition = new THREE.Vector3();
+const rayOrigin = new THREE.Vector3();
+const rayDirection = new THREE.Vector3();
+const muzzlePosition = new THREE.Vector3();
+const impactPosition = new THREE.Vector3();
+const firstDirection = new THREE.Vector3();
+const secondDirection = new THREE.Vector3();
 
-  const torsoGeometry = new THREE.BoxGeometry(0.62, 0.78, 0.32);
-  const headGeometry = new THREE.BoxGeometry(0.24, 0.24, 0.24);
-  const legGeometry = new THREE.BoxGeometry(0.19, 0.72, 0.2);
-  const armGeometry = new THREE.BoxGeometry(0.14, 0.5, 0.16);
-  const shoulderGeometry = new THREE.BoxGeometry(0.14, 0.14, 0.34);
-  const stripeGeometry = new THREE.BoxGeometry(0.55, 0.11, 0.33);
-  const gunGeometry = new THREE.BoxGeometry(0.08, 0.14, 0.62);
-  const helmetGeometry = new THREE.SphereGeometry(
-    0.175,
-    18,
-    9,
-    0,
-    Math.PI * 2,
-    0,
-    Math.PI * 0.42,
+function makeBotMaterials(color) {
+  return {
+    uniform: new THREE.MeshStandardMaterial({ color, roughness: 0.72, metalness: 0.05 }),
+    dark: new THREE.MeshStandardMaterial({ color: PALETTE.uniformDark, roughness: 0.65, metalness: 0.08 }),
+    helmet: new THREE.MeshStandardMaterial({ color: PALETTE.surface, roughness: 0.48, metalness: 0.14 }),
+    gun: new THREE.MeshStandardMaterial({ color: '#22262b', roughness: 0.35, metalness: 0.35 }),
+  };
+}
+
+function createBotMesh(tier) {
+  const bot = new THREE.Group();
+  const materials = makeBotMaterials(tier.color);
+  const parts = [];
+
+  function addPart(name, width, height, depth, x, y, z, material, partName = '') {
+    const mesh = new THREE.Mesh(new THREE.BoxGeometry(width, height, depth), material);
+    mesh.name = name;
+    mesh.position.set(x, y, z);
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    bot.add(mesh);
+    parts.push(mesh);
+    if (partName) {
+      mesh.userData.part = partName;
+      mesh.userData.bot = bot;
+    }
+    return mesh;
+  }
+
+  addPart('leftLeg', 0.21, 0.82, 0.24, -0.17, 0.41, 0, materials.dark);
+  addPart('rightLeg', 0.21, 0.82, 0.24, 0.17, 0.41, 0, materials.dark);
+  addPart('torso', 0.64, 0.75, 0.35, 0, 1.19, 0, materials.uniform, 'torso');
+  addPart('head', 0.34, 0.33, 0.34, 0, 1.73, 0, materials.dark, 'head');
+  addPart('helmet', 0.42, 0.17, 0.42, 0, 1.94, 0, materials.helmet);
+  addPart('leftArm', 0.17, 0.65, 0.2, -0.42, 1.19, 0, materials.uniform);
+  addPart('rightArm', 0.17, 0.65, 0.2, 0.42, 1.19, 0, materials.uniform);
+  addPart('gun', 0.13, 0.16, 0.78, 0.24, 1.27, 0.25, materials.gun);
+
+  return { bot, parts };
+}
+
+function hasLineOfSight(origin, target, obstacles) {
+  rayDirection.copy(target).sub(origin);
+  const distance = rayDirection.length();
+  if (distance < 0.001) return true;
+  rayDirection.normalize();
+  raycaster.set(origin, rayDirection);
+  raycaster.far = distance - 0.16;
+  const hit = raycaster.intersectObjects(obstacles, false)[0];
+  return !hit;
+}
+
+function coverIsCrowded(candidate, bots, activeIndex) {
+  let crowd = 0;
+  for (let index = 0; index < bots.length; index += 1) {
+    if (index === activeIndex || bots[index].userData.state.dead) continue;
+    const distance = Math.hypot(
+      candidate[0] - bots[index].position.x,
+      candidate[1] - bots[index].position.z,
+    );
+    if (distance < 2.1) crowd += distance < 1.2 ? 3 : 1;
+  }
+  return crowd;
+}
+
+function scoreCover(bot, cover, body, obstacles, bots) {
+  const coverX = cover[0];
+  const coverZ = cover[1];
+  const botDistance = Math.hypot(coverX - bot.position.x, coverZ - bot.position.z);
+  const threatDistance = Math.hypot(coverX - body.position.x, coverZ - body.position.z);
+  const crowd = coverIsCrowded(cover, bots, bot.userData.index);
+
+  firstDirection.set(coverX - bot.position.x, 0, coverZ - bot.position.z).normalize();
+  secondDirection.set(body.position.x - coverX, 0, body.position.z - coverZ).normalize();
+  const alignment = firstDirection.dot(secondDirection);
+  const alignmentScore = 1 + alignment * 0.7;
+
+  rayOrigin.set(coverX, 1.15, coverZ);
+  threatPosition.set(body.position.x, body.position.y + Math.min(body.eye, 1.2), body.position.z);
+  const exposed = hasLineOfSight(rayOrigin, threatPosition, obstacles) ? 14 : -3;
+
+  return (
+    -botDistance * 1.15
+    - Math.max(0, 14 - threatDistance) * 0.65
+    + alignmentScore * 3
+    + exposed
+    - crowd * 2.6
   );
-  const backpackGeometry = new THREE.BoxGeometry(0.36, 0.46, 0.15);
+}
 
-  legGeometry.translate(0, -0.36, 0);
-  armGeometry.translate(0, -0.25, 0);
+function moveBot(bot, targetX, targetZ, dt, speed) {
+  const deltaX = targetX - bot.position.x;
+  const deltaZ = targetZ - bot.position.z;
+  const distance = Math.hypot(deltaX, deltaZ);
+  if (distance <= ARRIVAL_DISTANCE) return 0;
 
-  const flashCanvas = document.createElement('canvas');
-  flashCanvas.width = 128;
-  flashCanvas.height = 128;
-  const flashContext = flashCanvas.getContext('2d');
-  const flashGradient = flashContext.createRadialGradient(64, 64, 0, 64, 64, 64);
-  flashGradient.addColorStop(0, 'rgba(255, 252, 224, 0.98)');
-  flashGradient.addColorStop(0.35, 'rgba(255, 231, 148, 0.78)');
-  flashGradient.addColorStop(1, 'rgba(255, 231, 148, 0)');
-  flashContext.fillStyle = flashGradient;
-  flashContext.fillRect(0, 0, 128, 128);
-  const flashTexture = new THREE.CanvasTexture(flashCanvas);
-  flashTexture.colorSpace = THREE.SRGBColorSpace;
-  const flashMaterial = new THREE.SpriteMaterial({
-    map: flashTexture,
-    transparent: true,
-    depthWrite: false,
-  });
+  const step = Math.min(distance, speed * dt);
+  bot.position.x += (deltaX / distance) * step;
+  bot.position.z += (deltaZ / distance) * step;
+  bot.rotation.y = Math.atan2(deltaX, deltaZ);
+  return distance;
+}
 
-  const items = [];
-  const hitMeshes = [];
-  const raycaster = new THREE.Raycaster();
-  raycaster.far = SHOT_RANGE;
-  const coverRaycaster = new THREE.Raycaster();
-  coverRaycaster.far = SHOT_RANGE;
-  const rayOrigin = new THREE.Vector3();
-  const rayTarget = new THREE.Vector3();
-  const rayDirection = new THREE.Vector3();
-  const shotDirection = new THREE.Vector3();
-  const shotEndpoint = new THREE.Vector3();
-  const muzzlePosition = new THREE.Vector3();
-  const playerCenter = new THREE.Vector3();
-  const coverOrigin = new THREE.Vector3();
-  const coverTarget = new THREE.Vector3();
-  const coverDirection = new THREE.Vector3();
+function fireAtPlayer(bot, body, damagePlayer, effects, audio, settings, damage) {
+  muzzlePosition.copy(bot.position);
+  muzzlePosition.y += bot.userData.state.crouching ? 0.92 : 1.31;
+  muzzlePosition.z += 0.5;
+  muzzlePosition.applyAxisAngle(new THREE.Vector3(0, 1, 0), bot.rotation.y);
 
-  for (let index = 0; index < SPAWNS.length; index += 1) {
-    const [spawnX, spawnZ] = SPAWNS[index];
-    const group = new THREE.Group();
-    group.position.set(spawnX, 0, spawnZ);
+  impactPosition.set(body.position.x, body.position.y + body.eye * 0.82, body.position.z);
+  effects.addTracer(muzzlePosition, impactPosition);
+  audio.gunshot(bot.position.distanceTo(body.position));
 
-    const torso = new THREE.Mesh(torsoGeometry, bodyMaterial);
-    torso.position.y = 1.0;
-    torso.userData.part = 'torso';
-    const head = new THREE.Mesh(headGeometry, headMaterial);
-    head.position.y = 1.53;
-    head.userData.part = 'head';
-    const leftLeg = new THREE.Mesh(legGeometry, limbMaterial);
-    leftLeg.position.set(-0.16, 0.72, 0);
-    const rightLeg = new THREE.Mesh(legGeometry, limbMaterial);
-    rightLeg.position.set(0.16, 0.72, 0);
-    const leftArm = new THREE.Mesh(armGeometry, limbMaterial);
-    leftArm.position.set(-0.35, 1.24, 0);
-    const rightArm = new THREE.Mesh(armGeometry, limbMaterial);
-    rightArm.position.set(0.35, 1.24, -0.08);
-    const leftShoulder = new THREE.Mesh(shoulderGeometry, stripeMaterial);
-    leftShoulder.position.set(-0.24, 1.27, 0);
-    const rightShoulder = new THREE.Mesh(shoulderGeometry, stripeMaterial);
-    rightShoulder.position.set(0.24, 1.27, 0);
-    const gun = new THREE.Mesh(gunGeometry, gunMaterial);
-    gun.position.set(0.2, 1.02, -0.28);
-    const flash = new THREE.Sprite(flashMaterial);
-    flash.position.set(0.2, 1.02, -0.54);
-    flash.scale.setScalar(0.42);
-    flash.visible = false;
-    const helmet = new THREE.Mesh(helmetGeometry, helmetMaterial);
-    helmet.position.y = 1.59;
-    const backpack = new THREE.Mesh(backpackGeometry, backpackMaterial);
-    backpack.position.set(0, 1.06, 0.22);
-    const teamStripe = new THREE.Mesh(stripeGeometry, stripeMaterial);
-    teamStripe.position.set(0, 1.24, 0);
+  const distance = bot.position.distanceTo(body.position);
+  const rangePenalty = Math.min(1, Math.max(0.35, 1.1 - distance / 38));
+  if (Math.random() <= settings.accuracy * rangePenalty) {
+    const falloff = distance > 20 ? 0.82 : 1;
+    damagePlayer(damage * falloff, bot.position.x, bot.position.z);
+  }
+}
 
-    group.add(
-      torso,
-      head,
-      leftLeg,
-      rightLeg,
-      leftArm,
-      rightArm,
-      leftShoulder,
-      rightShoulder,
-      gun,
-      flash,
-      helmet,
-      backpack,
-      teamStripe,
-    );
-    group.traverse((mesh) => {
-      if (mesh.isMesh) {
-        mesh.castShadow = true;
-        mesh.receiveShadow = true;
+function updateBotBehavior(bot, data, args) {
+  const {
+    dt,
+    body,
+    obstacles,
+    cover,
+    damagePlayer,
+    effects,
+    pressure,
+    audio,
+    bots,
+  } = args;
+  const state = data.state;
+  const settings = data.settings;
+  const target = new THREE.Vector3(body.position.x, body.position.y + body.eye, body.position.z);
+  const eye = new THREE.Vector3(bot.position.x, bot.position.y + 1.35, bot.position.z);
+  const lineOfSight = hasLineOfSight(eye, target, obstacles);
+
+  state.seeTimer += dt;
+  state.stateTime += dt;
+
+  if (pressure > 0.68 && state.mode !== 'push') {
+    state.mode = 'push';
+    state.stateTime = 0;
+    state.crouching = false;
+    state.fireCooldown = Math.max(state.fireCooldown, settings.reaction * 0.65);
+  }
+
+  if (state.mode === 'route') {
+    const waypoint = state.route[state.routeIndex];
+    const remaining = moveBot(bot, waypoint[0], waypoint[1], dt, ROUTE_MOVE_SPEED);
+    if (remaining <= ARRIVAL_DISTANCE) {
+      state.routeIndex += 1;
+      if (state.routeIndex >= state.route.length) {
+        state.mode = 'seek';
+        state.stateTime = 0;
+        state.coverIndex = -1;
       }
-    });
-    scene.add(group);
-
-    const item = {
-      group,
-      torso,
-      head,
-      leftLeg,
-      rightLeg,
-      leftArm,
-      rightArm,
-      flash,
-      spawnX,
-      spawnZ,
-      lane: LANES[index],
-      laneBias: 1 + index * 0.14,
-      route: ROUTES[index],
-      routeIndex: 1,
-      tier: index,
-      tierName: TIER_NAMES[index],
-      reactionBase: REACTION_TIERS[index],
-      accuracyBase: ACCURACY_TIERS[index],
-      fireBase: FIRE_TIERS[index],
-      aggression: AGGRESSION_TIERS[index],
-      walkCycle: 0,
-      losLeft: index * LOS_INTERVAL,
-      detect: 0,
-      fireIn: 0.75 + index * 0.18,
-      muzzle: 0,
-      reactLeft: 0,
-      coverLeft: 0,
-      holdLeft: 0,
-      coverState: 'route',
-      duck: 0,
-      seenTime: 0,
-      burstLeft: 0,
-      coverTargetX: spawnX,
-      coverTargetZ: spawnZ,
-      peekTargetX: spawnX,
-      peekTargetZ: spawnZ,
-      alertX: 0,
-      alertZ: 0,
-      health: HEALTH,
-      alive: true,
-      fall: 0,
-      pushTargetIndex: -1,
-      pushIndex: index,
-      pushAt: 0.18 + AGGRESSION_TIERS[index] * 0.7,
-    };
-    torso.userData.bot = item;
-    head.userData.bot = item;
-    hitMeshes.push(torso, head);
-    items.push(item);
-  }
-
-  function damage(mesh, amount, incomingX = 0, incomingZ = 0, cover = [], playerState, shootables) {
-    const item = mesh.userData.bot;
-    if (!item || !item.alive) return false;
-    item.health -= amount;
-    if (item.health > 0) {
-      item.alertX = incomingX;
-      item.alertZ = incomingZ;
-      item.coverState = 'seek';
-      item.coverLeft = 0;
-      item.seenTime = 0;
-      chooseCover(item, incomingX, incomingZ, cover, playerState, shootables);
-      return false;
     }
-
-    item.alive = false;
-    item.fall = 0;
-    item.flash.visible = false;
-    item.muzzle = 0;
-    item.detect = 0;
-    item.seenTime = 0;
-    return true;
-  }
-
-  function visibleBetween(startX, startY, startZ, endX, endY, endZ, shootables) {
-    coverOrigin.set(startX, startY, startZ);
-    coverTarget.set(endX, endY, endZ);
-    coverDirection.subVectors(coverTarget, coverOrigin);
-    const distance = coverDirection.length();
-    if (distance > SHOT_RANGE || distance < 0.001) return false;
-    coverDirection.divideScalar(distance);
-    coverRaycaster.set(coverOrigin, coverDirection);
-    const hits = coverRaycaster.intersectObjects(shootables, false);
-    return hits.length === 0 || hits[0].distance >= distance - 0.12;
-  }
-
-  function hasLineOfSight(item, playerState, shootables) {
-    return visibleBetween(
-      item.group.position.x,
-      BOT_EYE * item.group.scale.y,
-      item.group.position.z,
-      playerState.position.x,
-      playerState.position.y + playerState.height * 0.62,
-      playerState.position.z,
-      shootables,
-    );
-  }
-
-  function chooseCover(item, incomingX, incomingZ, cover, playerState, shootables) {
-    const incomingLength = Math.hypot(incomingX, incomingZ);
-    const threatX = incomingLength > 0.001 ? incomingX / incomingLength : 1;
-    const threatZ = incomingLength > 0.001 ? incomingZ / incomingLength : 0;
-    let bestScore = Number.POSITIVE_INFINITY;
-    let bestFound = false;
-
-    for (const [crateX, crateZ] of cover) {
-      const towardCrateX = crateX - item.group.position.x;
-      const towardCrateZ = crateZ - item.group.position.z;
-      const crateDistance = Math.hypot(towardCrateX, towardCrateZ);
-      if (crateDistance <= 0.001) continue;
-      const crateAlignment = (towardCrateX * threatX + towardCrateZ * threatZ) / crateDistance;
-      if (crateAlignment <= COVER_MARGIN) continue;
-
-      const hiddenX = crateX - threatX * COVER_STANDOFF;
-      const hiddenZ = crateZ - threatZ * COVER_STANDOFF;
-      const exposed = visibleBetween(
-        playerState.position.x,
-        playerState.position.y + playerState.eye,
-        playerState.position.z,
-        hiddenX,
-        0.86,
-        hiddenZ,
-        shootables,
-      );
-      if (exposed) continue;
-
-      let crowdCost = 0;
-      for (const other of items) {
-        if (other === item || !other.alive) continue;
-        const claimed = Math.hypot(other.coverTargetX - hiddenX, other.coverTargetZ - hiddenZ);
-        crowdCost = Math.max(crowdCost, Math.max(0, 1 - claimed / SQUAD_COVER_RADIUS));
-      }
-
-      let laneCost = 0;
-      for (const other of items) {
-        if (other === item || !other.alive || other.lane !== item.lane) continue;
-        const laneDistance = Math.hypot(other.group.position.x - hiddenX, other.group.position.z - hiddenZ);
-        laneCost = Math.max(laneCost, Math.max(0, 1 - laneDistance / (SQUAD_COVER_RADIUS + 0.4)));
-      }
-
-      const travel = Math.hypot(towardCrateX, towardCrateZ);
-      const score =
-        travel * COVER_TRAVEL_COST * item.laneBias
-        + (1 - crateAlignment) * COVER_ALIGNMENT_COST
-        + (exposed ? 1 : 0) * COVER_EXPOSURE_COST
-        + crowdCost * COVER_CROWD_COST
-        + laneCost * COVER_LANE_COST;
-      if (score >= bestScore) continue;
-
-      bestScore = score;
-      bestFound = true;
-      item.coverTargetX = hiddenX;
-      item.coverTargetZ = hiddenZ;
-      item.peekTargetX = crateX - incomingX * PEEK_STANDOFF;
-      item.peekTargetZ = crateZ - incomingZ * PEEK_STANDOFF;
+    if (state.stuckTimer > 1.4) {
+      state.mode = 'push';
+      state.stateTime = 0;
     }
-
-    if (!bestFound) item.coverState = 'route';
-    else item.coverLeft = COVER_DELAY;
+    return;
   }
 
-  function shootAtPlayer(item, playerState, shootables, onPlayerHit, effects, audio) {
-    rayOrigin.set(
-      item.group.position.x,
-      BOT_EYE * item.group.scale.y,
-      item.group.position.z,
-    );
-    rayTarget.set(
-      playerState.position.x,
-      playerState.position.y + playerState.height * 0.62,
-      playerState.position.z,
-    );
-    rayDirection.subVectors(rayTarget, rayOrigin);
-    const distance = rayDirection.length();
-    rayDirection.divideScalar(distance || 1);
-    const movePenalty = item.coverState === 'peek' ? 0.055 : 0.078;
-    const distancePenalty = Math.min(1, distance / 26) * 0.072;
-    const sightAccuracy = Math.min(1, item.seenTime / ACCURACY_TIME);
-    const spread =
-      item.accuracyBase
-      - sightAccuracy * item.accuracyBase * 0.45
-      + movePenalty
-      + distancePenalty;
-    shotDirection.copy(rayDirection);
-    shotDirection.x += (random() * 2 - 1) * spread;
-    shotDirection.y += (random() * 2 - 1) * spread;
-    shotDirection.z += (random() * 2 - 1) * spread;
-    shotDirection.normalize();
-    raycaster.set(rayOrigin, shotDirection);
-    const hits = raycaster.intersectObjects(shootables, false);
-    const wallDistance = hits.length > 0 ? hits[0].distance : Number.POSITIVE_INFINITY;
-    playerCenter.set(
-      playerState.position.x,
-      playerState.position.y + playerState.height * 0.62,
-      playerState.position.z,
-    );
-    if (
-      raycaster.ray.distanceSqToPoint(playerCenter) <= PLAYER_RADIUS * PLAYER_RADIUS
-      && distance <= wallDistance + 0.1
-    ) {
-      onPlayerHit(SHOT_DAMAGE, item.group.position.x, item.group.position.z);
-    }
-    if (hits.length > 0) shotEndpoint.copy(hits[0].point);
-    else shotEndpoint.copy(rayOrigin).addScaledVector(shotDirection, SHOT_RANGE);
-    muzzlePosition.set(0.2, 1.02, -0.54).applyMatrix4(item.group.matrixWorld);
-    effects.addTracer(muzzlePosition, shotEndpoint);
-    effects.addPuff(shotEndpoint);
-    audio.gunshot(distance);
-    item.muzzle = MUZZLE_TIME;
-    item.flash.visible = true;
-    item.fireIn = (item.coverState === 'peek' ? BURST_GAP : item.fireBase)
-      * (0.82 + random() * 0.38);
-    if (item.coverState === 'peek') item.burstLeft -= 1;
-  }
-
-  function pickSquadPushTarget(item) {
-    let bestScore = Number.POSITIVE_INFINITY;
-    let bestIndex = item.pushIndex;
-    for (let offset = 0; offset < PUSH_POINTS.length; offset += 1) {
-      const candidateIndex = (item.pushIndex + offset) % PUSH_POINTS.length;
-      const [targetX, targetZ] = PUSH_POINTS[candidateIndex];
-      const travel = Math.hypot(targetX - item.group.position.x, targetZ - item.group.position.z);
-      let crowdCost = 0;
-      for (const other of items) {
-        if (other === item || !other.alive || other.pushTargetIndex < 0) continue;
-        const [otherX, otherZ] = PUSH_POINTS[other.pushTargetIndex];
-        const spread = Math.hypot(otherX - targetX, otherZ - targetZ);
-        if (other.pushTargetIndex === candidateIndex) {
-          crowdCost = Math.max(crowdCost, 1);
-        } else {
-          crowdCost = Math.max(crowdCost, Math.max(0, 1 - spread / SQUAD_TARGET_RADIUS));
+  if (state.mode === 'seek') {
+    if (state.coverIndex < 0) {
+      let bestScore = Number.NEGATIVE_INFINITY;
+      let bestIndex = 0;
+      for (let index = 0; index < cover.length; index += 1) {
+        const score = scoreCover(bot, cover[index], body, obstacles, bots)
+          + Math.random() * 3.2;
+        if (score > bestScore) {
+          bestScore = score;
+          bestIndex = index;
         }
       }
-      const routePreference = candidateIndex === item.pushIndex ? 0 : 0.18;
-      const score = travel * 0.08 * item.laneBias + crowdCost * 2.6 + routePreference;
-      if (score < bestScore) {
-        bestScore = score;
-        bestIndex = candidateIndex;
-      }
+      state.coverIndex = bestIndex;
+      state.crouching = false;
     }
-    item.pushTargetIndex = bestIndex;
-    return PUSH_POINTS[bestIndex];
-  }
 
-  function waypointHold(item) {
-    let hold = HOLD_MIN + random() * HOLD_EXTRA;
-    for (const other of items) {
-      if (other === item || !other.alive || other.coverState !== 'route') continue;
-      const distance = Math.hypot(
-        other.group.position.x - item.group.position.x,
-        other.group.position.z - item.group.position.z,
-      );
-      if (other.lane === item.lane && distance < SQUAD_TARGET_RADIUS) hold *= 1.4;
+    const coverPoint = cover[state.coverIndex];
+    const remaining = moveBot(bot, coverPoint[0], coverPoint[1], dt, COVER_MOVE_SPEED);
+    if (remaining <= ARRIVAL_DISTANCE) {
+      state.mode = 'covered';
+      state.stateTime = 0;
+      state.crouching = true;
+    } else if (state.stuckTimer > 1.2) {
+      state.coverIndex = -1;
     }
-    return hold;
+    return;
   }
 
-  function updateDeadAnimation(item, dt) {
-    item.fall = Math.min(FALL_TIME, item.fall + dt);
-    const progress = item.fall / FALL_TIME;
-    const eased = 1 - (1 - progress) * (1 - progress);
-    item.group.rotation.z = -1.46 * eased;
-    item.group.position.y = -0.09 * eased;
-    item.group.updateMatrixWorld(true);
-  }
-
-  function applySeparation(item, moveX, moveZ) {
-    let separationX = 0;
-    let separationZ = 0;
-    for (const other of items) {
-      if (other === item || !other.alive) continue;
-      const awayX = item.group.position.x - other.group.position.x;
-      const awayZ = item.group.position.z - other.group.position.z;
-      const awayDistance = Math.hypot(awayX, awayZ);
-      if (awayDistance >= SEPARATION_RADIUS || awayDistance <= 0.001) continue;
-      const strength = 1 - awayDistance / SEPARATION_RADIUS;
-      separationX += (awayX / awayDistance) * strength;
-      separationZ += (awayZ / awayDistance) * strength;
+  if (state.mode === 'covered') {
+    state.crouching = true;
+    if (state.stateTime > settings.reaction * 1.5) {
+      state.mode = 'peek';
+      state.stateTime = 0;
+      state.burstRemaining = settings.burst;
+      state.crouching = false;
     }
-    return [moveX + separationX, moveZ + separationZ];
+    return;
   }
 
-  function step(dt, playerState, shootables, combatActive, onPlayerHit, cover, effects, roundPressure, audio) {
-    for (const item of items) {
-      if (!item.alive) {
-        updateDeadAnimation(item, dt);
+  if (state.mode === 'peek') {
+    const deltaX = body.position.x - bot.position.x;
+    const deltaZ = body.position.z - bot.position.z;
+    bot.rotation.y = Math.atan2(deltaX, deltaZ);
+    state.fireCooldown -= dt;
+
+    if (lineOfSight && state.fireCooldown <= 0 && state.burstRemaining > 0) {
+      fireAtPlayer(bot, body, damagePlayer, effects, audio, settings, settings.damage);
+      state.burstRemaining -= 1;
+      state.fireCooldown = settings.fireDelay;
+    }
+
+    if (state.burstRemaining <= 0) {
+      state.mode = 'covered';
+      state.stateTime = 0;
+      state.fireCooldown = settings.fireDelay + Math.random() * settings.fireDelay;
+      return;
+    }
+
+    if (state.stateTime > 2.5 && !lineOfSight) {
+      state.mode = 'seek';
+      state.stateTime = 0;
+      state.coverIndex = -1;
+    }
+    return;
+  }
+
+  const deltaX = body.position.x - bot.position.x;
+  const deltaZ = body.position.z - bot.position.z;
+  const desiredDistance = 9 - settings.aggression * 4.5;
+  const distance = Math.hypot(deltaX, deltaZ);
+  const closeX = distance > desiredDistance ? body.position.x : bot.position.x + deltaX * 0.2;
+  const closeZ = distance > desiredDistance ? body.position.z : bot.position.z + deltaZ * 0.2;
+  moveBot(bot, closeX, closeZ, dt, PUSH_MOVE_SPEED);
+
+  state.fireCooldown -= dt;
+  if (lineOfSight && state.fireCooldown <= 0) {
+    fireAtPlayer(bot, body, damagePlayer, effects, audio, settings, settings.damage);
+    state.fireCooldown = settings.fireDelay + (Math.random() * 0.2);
+  }
+  if (pressure < 0.35 && state.stateTime > 2.5) {
+    state.mode = 'seek';
+    state.coverIndex = -1;
+  }
+}
+
+export function createBots(scene, random) {
+  const items = [];
+  const hitMeshes = [];
+  const bots = [];
+
+  function reset() {
+    for (const bot of items) {
+      scene.remove(bot);
+    }
+    items.length = 0;
+    hitMeshes.length = 0;
+    bots.length = 0;
+
+    for (let index = 0; index < BOT_COUNT; index += 1) {
+      const settings = TIER_SETTINGS[index];
+      const { bot, parts } = createBotMesh(settings);
+      const route = ROUTES[index].map((point) => [point[0], point[1]]);
+      const start = route[0];
+      bot.userData.index = index;
+      bot.userData.tier = index;
+      bot.userData.state = {
+        health: MAX_HEALTH,
+        dead: false,
+        deathTime: 0,
+        mode: 'route',
+        route,
+        routeIndex: 1,
+        coverIndex: -1,
+        crouching: false,
+        seeTimer: 0,
+        stateTime: 0,
+        burstRemaining: 0,
+        fireCooldown: settings.reaction,
+        stuckTimer: 0,
+        lastDistance: Number.POSITIVE_INFINITY,
+      };
+      bot.position.set(start[0], 0, start[1]);
+      bot.rotation.y = Math.atan2(-start[0], -start[1]);
+      scene.add(bot);
+      items.push(bot);
+      bots.push(bot);
+      hitMeshes.push(...parts.filter((part) => part.userData.part));
+    }
+  }
+
+  function step(dt, body, worldShootables, combatActive, damagePlayer, cover, effects, pressure, audio) {
+    if (dt <= 0) return;
+    scene.updateMatrixWorld(true);
+
+    for (const bot of bots) {
+      const state = bot.userData.state;
+      if (state.dead) {
+        state.deathTime += dt;
+        const fall = Math.min(1, state.deathTime / 0.55);
+        bot.rotation.z = fall * (Math.PI / 2) * (bot.userData.index % 2 ? 1 : -1);
+        bot.position.y = 0.08 * fall;
+        bot.rotation.y += Math.sin(fall * Math.PI) * dt * 2;
         continue;
       }
 
-      let moveX = 0;
-      let moveZ = 0;
-      let duckTarget = 0;
-
-      if (item.coverState === 'seek') {
-        item.coverLeft = Math.max(0, item.coverLeft - dt);
-        if (item.coverLeft === 0) item.coverState = 'covered';
-        moveX = item.coverTargetX - item.group.position.x;
-        moveZ = item.coverTargetZ - item.group.position.z;
-        if (Math.hypot(moveX, moveZ) < ARRIVE_DISTANCE) {
-          moveX = 0;
-          moveZ = 0;
-          item.coverState = 'covered';
-          item.holdLeft = 0.48 + random() * 0.55;
-        }
-        duckTarget = 0.5;
-      } else if (item.coverState === 'covered') {
-        duckTarget = 0.95;
-        moveX = item.coverTargetX - item.group.position.x;
-        moveZ = item.coverTargetZ - item.group.position.z;
-        if (Math.hypot(moveX, moveZ) > ARRIVE_DISTANCE) {
-          item.coverState = 'seek';
-        } else {
-          moveX = 0;
-          moveZ = 0;
-          item.holdLeft = Math.max(0, item.holdLeft - dt);
-          if (item.holdLeft === 0) {
-            item.coverState = 'peek';
-            item.burstLeft = 2 + (random() < 0.45 ? 1 : 0);
-            item.fireIn = 0.07 + random() * 0.09;
-          }
-        }
-      } else if (item.coverState === 'peek') {
-        duckTarget = 0.3;
-        moveX = item.peekTargetX - item.group.position.x;
-        moveZ = item.peekTargetZ - item.group.position.z;
-        if (Math.hypot(moveX, moveZ) < ARRIVE_DISTANCE || item.burstLeft <= 0) {
-          item.coverState = 'seek';
-          item.coverLeft = COVER_DELAY * (0.75 + random() * 0.5);
-        }
-      } else if (roundPressure >= item.pushAt) {
-        const target = item.pushTargetIndex < 0
-          ? pickSquadPushTarget(item)
-          : PUSH_POINTS[item.pushTargetIndex];
-        moveX = target[0] - item.group.position.x;
-        moveZ = target[1] - item.group.position.z;
-        const targetDistance = Math.hypot(moveX, moveZ);
-        if (targetDistance < PUSH_STANDOFF) {
-          moveX = 0;
-          moveZ = 0;
-          duckTarget = 0.35;
-        }
-      } else {
-        const target = item.route[item.routeIndex];
-        moveX = target[0] - item.group.position.x;
-        moveZ = target[1] - item.group.position.z;
-        const targetDistance = Math.hypot(moveX, moveZ);
-        if (targetDistance < ARRIVE_DISTANCE) {
-          item.holdLeft = waypointHold(item);
-          moveX = 0;
-          moveZ = 0;
-        }
-        if (item.holdLeft > 0) {
-          item.holdLeft = Math.max(0, item.holdLeft - dt);
-          if (item.holdLeft === 0) {
-            item.routeIndex = (item.routeIndex + 1) % item.route.length;
-            const next = item.route[item.routeIndex];
-            moveX = next[0] - item.group.position.x;
-            moveZ = next[1] - item.group.position.z;
-          } else {
-            moveX = 0;
-            moveZ = 0;
-          }
-        }
+      if (!combatActive || body.health <= 0) {
+        state.seeTimer = 0;
+        state.stuckTimer = 0;
+        continue;
       }
 
-      [moveX, moveZ] = applySeparation(item, moveX, moveZ);
-      const moveDistance = Math.hypot(moveX, moveZ);
-      if (moveDistance > 0.001) {
-        const travel = Math.min(moveDistance, SPEED * dt);
-        item.group.position.x += (moveX / moveDistance) * travel;
-        item.group.position.z += (moveZ / moveDistance) * travel;
-        item.group.position.y = 0;
-        item.walkCycle += travel * 2.75;
-      }
+      const playerDistance = Math.hypot(
+        bot.position.x - body.position.x,
+        bot.position.z - body.position.z,
+      );
+      const movementDelta = Math.max(0, state.lastDistance - playerDistance);
+      state.stuckTimer = movementDelta > STUCK_DISTANCE ? 0 : state.stuckTimer + dt;
+      state.lastDistance = playerDistance;
 
-      const idleBlend = moveDistance > 0.001 ? 1 : 0.24;
-      item.leftLeg.rotation.x = Math.sin(item.walkCycle) * 0.58 * idleBlend;
-      item.rightLeg.rotation.x = -Math.sin(item.walkCycle) * 0.58 * idleBlend;
-      item.leftArm.rotation.x = -Math.sin(item.walkCycle) * 0.38 * idleBlend;
-      item.rightArm.rotation.x = Math.sin(item.walkCycle) * 0.22 * idleBlend;
-
-      item.duck += (duckTarget - item.duck) * Math.min(1, dt * 9);
-      item.group.scale.y = 1 - (1 - DUCK_SCALE) * item.duck;
-
-      item.muzzle = Math.max(0, item.muzzle - dt);
-      item.flash.visible = item.muzzle > 0;
-      item.losLeft = Math.max(0, item.losLeft - dt);
-      if (item.losLeft === 0) {
-        item.losLeft = LOS_INTERVAL;
-        const visible = combatActive
-          && playerState.health > 0
-          && hasLineOfSight(item, playerState, shootables);
-        if (visible) {
-          if (item.detect === 0) {
-            item.reactLeft = item.reactionBase
-              * (0.85 + random() * 0.3)
-              + (1 - item.health / HEALTH) * 0.14;
-          }
-          item.detect = Math.min(DETECT_TIME, item.detect + LOS_INTERVAL);
-          item.seenTime = Math.min(ACCURACY_TIME + 1, item.seenTime + LOS_INTERVAL);
-        } else {
-          item.detect = 0;
-          item.seenTime = 0;
-        }
-      }
-      if (item.detect > 0 && item.reactLeft > 0) item.reactLeft -= dt;
-
-      let facingX = moveX;
-      let facingZ = moveZ;
-      if (item.detect > 0) {
-        facingX = playerState.position.x - item.group.position.x;
-        facingZ = playerState.position.z - item.group.position.z;
-        item.fireIn -= dt;
-        if (item.reactLeft <= 0 && item.fireIn <= 0 && combatActive && playerState.health > 0) {
-          shootAtPlayer(item, playerState, shootables, onPlayerHit, effects, audio);
-        }
-      } else {
-        item.fireIn = Math.max(item.fireIn, 0.18);
-      }
-
-      const facingLength = Math.hypot(facingX, facingZ);
-      if (facingLength > 0.001) {
-        item.group.rotation.y = Math.atan2(-facingX / facingLength, -facingZ / facingLength);
-      }
-      item.group.updateMatrixWorld(true);
+      const args = {
+        dt,
+        body,
+        obstacles: worldShootables,
+        cover,
+        damagePlayer,
+        effects,
+        pressure,
+        audio,
+        bots,
+      };
+      updateBotBehavior(bot, bot, args);
+      bot.position.y = state.crouching ? -0.24 : 0;
     }
   }
 
-  function reset() {
-    for (let index = 0; index < items.length; index += 1) {
-      const item = items[index];
-      item.group.position.set(item.spawnX, 0, item.spawnZ);
-      item.group.rotation.set(0, 0, 0);
-      item.group.scale.set(1, 1, 1);
-      item.routeIndex = 1;
-      item.walkCycle = 0;
-      item.leftLeg.rotation.set(0, 0, 0);
-      item.rightLeg.rotation.set(0, 0, 0);
-      item.leftArm.rotation.set(0, 0, 0);
-      item.rightArm.rotation.set(0, 0, 0);
-      item.losLeft = index * LOS_INTERVAL;
-      item.detect = 0;
-      item.fireIn = 0.75 + index * 0.18;
-      item.muzzle = 0;
-      item.flash.visible = false;
-      item.health = HEALTH;
-      item.alive = true;
-      item.fall = 0;
-      item.reactLeft = 0;
-      item.coverLeft = 0;
-      item.holdLeft = 0;
-      item.coverState = 'route';
-      item.duck = 0;
-      item.seenTime = 0;
-      item.burstLeft = 0;
-      item.coverTargetX = item.spawnX;
-      item.coverTargetZ = item.spawnZ;
-      item.peekTargetX = item.spawnX;
-      item.peekTargetZ = item.spawnZ;
-      item.alertX = 0;
-      item.alertZ = 0;
-      item.pushTargetIndex = -1;
-      item.pushIndex = index;
-      item.pushAt = 0.18 + AGGRESSION_TIERS[index] * 0.7;
-      item.reactionBase = REACTION_TIERS[index];
-      item.accuracyBase = ACCURACY_TIERS[index];
-      item.fireBase = FIRE_TIERS[index];
-      item.group.updateMatrixWorld(true);
+  function damage(mesh, amount, incomingX, incomingZ, cover, body, worldShootables) {
+    const bot = mesh.userData.bot;
+    if (!bot || bot.userData.state.dead) return false;
+
+    const state = bot.userData.state;
+    const headshot = mesh.userData.part === 'head';
+    state.health = Math.max(0, state.health - Math.round(amount));
+    state.seeTimer = 0;
+
+    if (state.health <= 0) {
+      state.dead = true;
+      state.deathTime = 0;
+      state.crouching = false;
+      return true;
     }
+
+    if (state.mode !== 'push' || random() > bot.userData.tier * 0.22) {
+      state.mode = 'seek';
+      state.stateTime = 0;
+      state.coverIndex = -1;
+    }
+
+    const threatDistance = Math.hypot(
+      bot.position.x - body.position.x,
+      bot.position.z - body.position.z,
+    );
+    void incomingX;
+    void incomingZ;
+    void cover;
+    void worldShootables;
+    void threatDistance;
+    return false;
   }
+
+  function remaining() {
+    return bots.filter((bot) => !bot.userData.state.dead).length;
+  }
+
+  reset();
 
   return {
     items,
@@ -713,12 +453,6 @@ export function createBots(scene, random) {
     damage,
     step,
     reset,
-    remaining() {
-      let count = 0;
-      for (const item of items) {
-        if (item.alive) count += 1;
-      }
-      return count;
-    },
+    remaining,
   };
 }

@@ -1,5 +1,5 @@
-// Procedural Web Audio feedback. The game ships with no sound assets, and the
-// audio system owns no simulation state beyond its bomb-tick timer.
+// Procedural Web Audio feedback, generated without bundled sound assets.
+// No gameplay state is owned here apart from the bomb-tick cadence.
 const MASTER_GAIN = 0.28;
 const AudioContextClass = window.AudioContext || window.webkitAudioContext;
 
@@ -108,6 +108,7 @@ export function createAudio() {
       const interval = Math.max(0.16, Math.min(0.9, fuse * 0.038));
       secondsUntilBombBeep -= dt;
       if (secondsUntilBombBeep > 0) return;
+
       secondsUntilBombBeep = interval;
       playTone({ type: 'square', start: 1450, end: 1180, duration: 0.055, gain: 0.2 });
     },

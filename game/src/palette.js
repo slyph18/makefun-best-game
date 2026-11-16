@@ -1,6 +1,5 @@
-// Central design tokens shared by the renderer and CSS custom properties.
-// Lighting derives most in-world variation from these seven structural shades
-// plus one high-contrast accent.
+// Central design tokens shared by the WebGL renderer and CSS custom properties.
+// World lighting uses these structural shades and the high-contrast accent.
 export const PALETTE = {
   canvas: '#dfe2d5',
   surface: '#39434d',

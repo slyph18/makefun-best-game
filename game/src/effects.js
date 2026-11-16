@@ -1,6 +1,5 @@
-// A reusable effects pool. Tracers and impact puffs borrow a fixed set of meshes, so
-// sustained fire does not allocate scene objects or generate garbage during gameplay.
-
+// Reusable tracer and impact-puff pools. Borrowing a fixed mesh set keeps
+// sustained fire free of scene allocation and gameplay-time garbage.
 import * as THREE from 'three';
 import { PALETTE } from './palette.js';
 

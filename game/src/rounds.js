@@ -1,7 +1,6 @@
 // Match flow only: phase timing, round outcomes, and the first-to-three result.
-// Spawning belongs to main.js; this module advances state and publishes a concise
-// one-line summary for the HUD after each round.
-
+// Spawn management belongs to main.js. This module advances state and publishes
+// a concise HUD summary after each round.
 const BUY_TIME = 7;
 const COMBAT_TIME = 75;
 const ROUND_END_TIME = 1.4;

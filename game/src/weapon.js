@@ -1,5 +1,5 @@
-// First-person weapon view model and firing feel. Weapon rules and ammunition
-// live in arsenal.js; this module only presents and consumes them.
+// First-person weapon presentation and firing feel.
+// Equipment rules and ammunition remain in arsenal.js; this module consumes them.
 import * as THREE from 'three';
 import { PALETTE } from './palette.js';
 

@@ -1,5 +1,5 @@
-// Player inventory, weapon performance, grenades, and the bomb objective.
-// Visual weapon models live in weapon.js; this module owns simulation state.
+// Player-owned equipment and round-limited objective simulation.
+// Weapon view models live in weapon.js; this module owns weapon rules and state.
 import * as THREE from 'three';
 import { PALETTE } from './palette.js';
 
@@ -119,7 +119,7 @@ export function createArsenal(scene) {
   }
 
   function createGrenadeProjectiles() {
-    const material = new THREE.MeshStandardMaterial({
+    const sharedMeshMaterial = new THREE.MeshStandardMaterial({
       color: new THREE.Color(PALETTE.hairline),
       roughness: 0.5,
       metalness: 0.25,
@@ -132,7 +132,7 @@ export function createArsenal(scene) {
     });
 
     return Array.from({ length: MAX_GRENADES }, () => {
-      const mesh = new THREE.Mesh(new THREE.SphereGeometry(0.09, 12, 8), material);
+      const mesh = new THREE.Mesh(new THREE.SphereGeometry(0.09, 12, 8), sharedMeshMaterial);
       mesh.visible = false;
       const explosion = new THREE.Mesh(
         new THREE.SphereGeometry(1, 16, 12),
@@ -247,6 +247,7 @@ export function createArsenal(scene) {
 
     for (const bot of botItems) {
       if (!bot.alive) continue;
+
       const distance = Math.hypot(
         bot.group.position.x - projectile.mesh.position.x,
         bot.group.position.y + 1 - projectile.mesh.position.y,
@@ -272,6 +273,7 @@ export function createArsenal(scene) {
       }
 
       if (!projectile.mesh.visible || projectile.exploded) continue;
+
       projectile.velocity.y -= GRENADE_GRAVITY * dt;
       projectile.mesh.position.addScaledVector(projectile.velocity, dt);
       projectile.life += dt;
